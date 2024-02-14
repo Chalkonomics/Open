@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html data-bs-theme="dark">
+
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/5.0.0-alpha1/js/bootstrap.bundle.min.js"
+        integrity="sha384-+T5d5Vg4e9U3sZI4W+ZBIMwE6b9b0C6FVn5VX4hHtZ2jcFg6B6ZdA4Vl9vZ6j7f8"
+        crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
+        crossorigin="anonymous"></script>
+    <title>Discord/TV Alert generator</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Honk&display=swap');
+
+        body {
+            text-align: center;
+            height: 100vh;
+            padding: 2rem;
+        }
+
+        .jsonCode {
+            width: 500px;
+            text-align: left;
+            margin: auto;
+        }
+
+        .shade {
+            color: #ffa4587d;
+        }
+
+        .center {
+            width: 400px;
+            margin: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container fullScreen">
+
+        <div class="some">
+            <span style="font-size: 4rem; font-family: honk;">TV alert Generator</span>
+            <!-- <i class="float-end bi bi-gear" style="font-size: 1.5rem;"></i> -->
+        </div>
+
+        <div class="alert-container mt-4">
+            <div class="btn-group" role="group" aria-label="Basic outlined example"></div>
+        </div>
+    </div>
+
+    <div class="mt-5 mb-5 center text-start">
+        <p>1. Select condition from above</p>
+        <p>2. Enter alert title below <span class="fst-italic shade">5MIN ADA PB TREND</span></p>
+        <p>3. Click generate JSON <span class="fst-italic shade">Copies to clipboard</span></p>
+        <p>4. Can also copy alert title </p>
+    </div>
+
+    <div class="input-group mb-3 center">
+        <i id="clipboardIcon" class="bi bi-clipboard-check input-group-text"></i>
+        <input type="text" id="descriptionInput" class="form-control" aria-label="Alert description"
+            aria-describedby="jenJson">
+        <button class="btn btn-outline-info" type="button" id="genJson" onclick="generateJSON()">Generate
+            JSON</button>
+    </div>
+
+
+    <pre class="jsonCode text-primary-emphasis" id="jsonOutput"></pre>
+
+    <div class="toast-container top-50 start-50 translate-middle">
+        <div class="toast align-items-center text-bg-success" role="alert" aria-live="assertive" aria-atomic="true"
+            data-bs-delay="1500">
+            <div class="d-flex">
+                <div class="toast-body"></div>
+                <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+
+    </div>
+</body>
+<script type="text/javascript">
+
+    // bit restricitve but can add more
+    const colors = [16416176, 2469631, 15503192, 6207853, 48797, 10264062, 49087, 16767449, 8421504]
+
+    let selectedAlert = null;
+    let toastController = new bootstrap.Toast(document.querySelector('.toast'));
+    let toastRef = null;
+
+    // Discord side color uses decimnal col instead of hex
+    const defaultAlerts = [
+        { key: 'Pullback', value: 'Pullback', color: colors[1] },
+        { key: 'Breakout', value: 'Breakout', color: colors[3] },
+        { key: 'Touch S/R', value: 'Touch S/R', color: colors[4] },
+        { key: 'VWAP', value: 'VWAP', color: colors[0] },
+        { key: 'EMA', value: 'EMA', color: colors[2] },
+    ]
+
+
+
+    function generateJSON() {
+
+        const { value: alertType, color } = selectedAlert
+        const alertDesc = document.getElementById('descriptionInput').value;
+        const timeframe = timeframeIfExists(alertDesc);
+
+        const discordAlert = {
+            "username": 'TradingView Alert',
+            // "content": alertDesc,
+            "embeds": [{
+                "title": `${timeframe ? timeframe : ''} ${alertType} alert on {{ticker}}`,
+                "description": alertDesc,
+                "color": color,
+                "fields": [
+                    {
+                        "name": "Alert Type",
+                        "value": alertType
+                    },
+                    {
+                        // interval default to 1 on xing price. Drawings + indicators use interval correctly
+                        // https://www.tradingview.com/support/solutions/43000531021-how-to-use-a-variable-value-in-alert/
+                        "name": "Timeframe",
+                        "value": `${timeframe || "{{interval}}"}`
+                    },
+                    {
+                        "name": "Symbol",
+                        "value": "{{ticker}}",
+                        "inline": true
+                    },
+                    {
+                        "name": "Price",
+                        "value": "{{close}}",
+                        "inline": true
+                    }
+                ],
+                "footer": {
+                    "text": "Automated Alert"
+                }
+            }]
+        };
+
+        const alertAsJSON = JSON.stringify(discordAlert, null, 4);
+
+        // Display the generated JSON string
+        document.getElementById('jsonOutput').textContent = alertAsJSON;
+        copyToClipboard(alertAsJSON, "Alert body")
+
+    }
+
+    function loadAlertsFromLS() {
+        const alerts = localStorage.getItem('chalkDiscAlerts') || defaultAlerts;
+        if (alerts) {
+            const buttonGroup = document.querySelector('.btn-group');
+            buttonGroup.innerHTML = '';
+            alerts.forEach(alert => {
+                const button = document.createElement('button');
+                button.textContent = alert.key;
+                button.value = alert.value;
+                //button.style.backgroundColor = `#${alert.color}`;
+                button.classList.add('btn', 'btn-outline-secondary');
+                button.onclick = function () {
+                    buttonGroup.querySelectorAll('button').forEach(b => b.classList.remove('btn-outline-info'));
+                    button.classList.add('btn-outline-info');
+                    selectedAlert = alert;
+                }
+                buttonGroup.appendChild(button);
+            });
+        }
+    }
+
+    function copyToClipboard(alert, alertSection) {
+        navigator.clipboard.writeText(alert).then(() => {
+            toastRef.querySelector('.toast-body').textContent = `${alertSection} copied to clipboard!`;
+            toastController.show();
+        }, () => {
+            toastRef.classList.toggle('bg-danger', true);
+            toastRef.querySelector('.toast-body').textContent = `${alertSection} failed to copy to clipboard`;
+            toastController.show();
+        });
+    }
+
+    function timeframeIfExists(str) {
+        const regex = /^(\d+\S*)\s/;
+        const match = str.match(regex);
+        return match ? match[1] : null;
+    }
+
+
+    /*
+    Setup
+    */
+
+
+    function setupDisabled() {
+        const input = document.getElementById('descriptionInput');
+        const generateButton = document.getElementById('genJson');
+
+        function isGenerationAllowed() {
+            const isDisabled = input.value.trim() === '' || !selectedAlert;
+            generateButton.disabled = isDisabled
+            generateButton.classList.toggle('btn-outline-info', !isDisabled);
+        }
+
+        input.addEventListener('input', isGenerationAllowed);
+        isGenerationAllowed()
+    }
+
+
+    // Focus on the input field when the page loads    
+    window.onload = function () {
+        loadAlertsFromLS();
+        document.getElementById('descriptionInput').focus();
+        document.getElementById('descriptionInput').addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' || event.keyCode === 13) {
+                generateJSON();
+                event.preventDefault();
+            }
+        });
+        document.getElementById('clipboardIcon').addEventListener('click', function (event) {
+            event.preventDefault();
+            const clipTitle = document.getElementById('descriptionInput').value
+            console.log(clipTitle)
+            copyToClipboard(clipTitle, `Alert Title "${clipTitle}"`)
+        });
+        setupDisabled()
+        toastRef = document.querySelector('.toast');
+        console.log('ze page has loaded!');
+    }
+</script>
+
+</html>
